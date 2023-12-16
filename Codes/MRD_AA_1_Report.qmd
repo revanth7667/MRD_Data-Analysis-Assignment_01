@@ -1,0 +1,387 @@
+---
+title: "Airbnb Pricing in Ashville, NC"
+author: "Revanth Chowdary Ganga (rg361)"
+format: pdf
+editor: visual
+echo: FALSE
+output: FALSE
+---
+
+# 1. Executive Report
+
+## 1.1 Introduction
+
+Airbnb is a platform which allows the owners("**Hosts**") of residential properties to list them online to other people (*"**Guests**"*) for temporary stays. The hosts get to decide most of the components like the rules, amenities provided and the price for the listing etc. This project aims to develop a model to assist the hosts in deciding a price for their listings in Ashville, North Carolina.
+
+The [Data](https://anlane611.github.io/ids702-fall23/DAA/listings.csv) used in this project is from [InsideAirbnb](http://insideairbnb.com/get-the-data/) and contains the details of some Airbnb listings in Ashville, NC. The Data is as of: ***2023-Jun-18*** which has **3,239** observations (rows) and ***75*** variables (columns)
+
+This data is used post cleaning to analyze and determine the factors(variables) which could impact the price of a listing. The selected factors are then used to generate a model which can assist the hosts in deciding a price for their listings in Ashville.
+
+## 1.2 Method
+
+The model was developed in multiple stages as follows:
+
+### 1.2.1 Data Preparation
+
+To ensure proper analysis of data and generation of the model, the data first had to be cleaned and modified as per the requirements. some operations like deletion of non-required columns, creation of helper columns, empty value cleaning were performed to prepare the data for analysis.
+
+### 1.2.2 Analysis
+
+Once the Data has been cleaned and prepared as mentioned in the previous step, the Data was explored to see both the individual variable wise characteristics and for any patterns or relationship between variables, possible duplication(redundancy) or correlation of data between variables. post this process the relevant data was selected for using in the model
+
+### 1.2.3 Modelling
+
+For this project, **Linear Regression** was used to generate the price of a listing based on the other characteristics of the listing. Linear Regression works by trying to fit a equation which would represent the relationship between the output and input variables.In this project, the output variable is the price of the listing, The input variables were selected as per the analysis process mentioned above and are as follows(all w.r.t to the listing of interest):
+
+-   Host: Verification Status, Super-host status, email verification, response rate
+
+-   Property: Room type, No. of bedrooms, bathrooms and beds. No. of guests it can accommodate
+
+-   location: distance to downtown Ashville (calculated), neighborhood
+
+-   Other: number of reviews, average ratings, selected amenities, minimum nights
+
+## 1.3 Results & Conclusion
+
+By using the selected input variables, a Linaer Regression model was made which can be used to generate the listing price based on the values of the input variables.
+
+The generated model has an **R**^2^ value of 0.64, **R**^2^ metric is used as a measure to see the effectiveness of the model, it ranges from 0 to 1 and the closer it is to 1, the better the model is.
+
+**Sample Output**:
+
+as per the model a listing which has a **verified superhost** with a **response rate** of 70% can list his **entire apartment** property at a distance of **1.2 mi** to downtown Ashiville in the **neighbourhood** with code "28732" which can **accomodate** 4 guests and has amenities like **TV** and **parking** with 2 each of **Bathrooms, Beds and Bedrooms** for approximtely 100\$ provided the property has 50 **reviews** and average reviews in the range 3.5 to 4.5.
+
+While the model is able to generate a price based on the inputs, it can be further improved by having additional data points such as time-related information, uniform listing of amenities etc.
+
+# 2. Technical Report
+
+```{r, ,message=FALSE, warning = FALSE}
+# Loading the required lobraries and packages
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(car)
+library(geosphere)
+library(corrplot)
+```
+
+```{r}
+# Laod the Data
+#Load the Data and show glimpse of it
+df = read_csv('https://anlane611.github.io/ids702-fall23/DAA/listings.csv', show_col_types = FALSE)
+
+#Backup to load from downloaded csv file in case of internet issues, change path accordingly
+#df = read_csv('/Users/revanth/Documents/MIDS/Semester 1/MRD/Data Analysis Assignment/Assignment 1/Airbnb_listings.csv')
+
+glimpse(df)
+```
+
+## 2.1 Introduction
+
+The raw Data provided had **3239** observations and **75** variables.
+
+The Following Data cleaning and preparation operations were performed
+
+-   removal of columns which have identification or unique details which are not required for the model such as the columns with the listing or host IDs and URLs etc.
+
+-   extraction of numerical values from columns: The columns like Price and number of Bathrooms were converted from Text to Numeric data by extracting the numeric information from them by using functions like **grepl**, **parse_number** etc. so that they could be used more effectively in the model
+
+-   New variables were calculated to be used in the model:
+
+    -   distance to downtown: was calculated using the **distm** function and the Latitude and Longitude information provided in the data
+
+    -   amenities: new columns (start with "amn\_") were created to check if a selected amenity was present (represented by 1) or not (represented by 0) in a listing so that these parameters can also be used for the modelling
+
+    -   host verification: the detail about host e-mail and phone verification were stored in separate columns to be used in the modelling. For e-mail verification, it was considered to be verified even if one of the personal or work emails were verified in order to reduce complexity
+
+-   Null Values in the columns were treated using one of the following 2 approaches:
+
+    -   Imputing: Null values were imputed with default values (e.g. host response rate was considered as 0 if absent) or by assumed logic (e.g. number of beds was considered equal to number of bedrooms if absent)
+
+    -   Dropping: Rows with Null data in Bedrooms column were dropped for the category of "entire apt" since it was not possible to come up with a logic as in the case of pvt room or hotel where 1 can be assumed.
+
+## 2.2 Method
+
+Post the cleaning process mentioned above, the different variables were explored to view their distributions, and possible correlation with other variables.
+
+```{r}
+#drop the columns which are not required
+drop_cols_list <- c("id","listing_url","scrape_id","last_scraped","source","name","description","neighborhood_overview","picture_url","host_id","host_url","host_name","host_location","host_about","host_thumbnail_url","host_picture_url","host_neighbourhood","calendar_updated","calendar_last_scraped","license","host_since","neighbourhood","maximum_nights","minimum_minimum_nights","maximum_minimum_nights","minimum_maximum_nights","maximum_maximum_nights","minimum_nights_avg_ntm","maximum_nights_avg_ntm","availability_30","availability_60","availability_90","availability_365","first_review","last_review","number_of_reviews_ltm","number_of_reviews_l30d","host_acceptance_rate","neighbourhood_group_cleansed","reviews_per_month","calculated_host_listings_count","calculated_host_listings_count_entire_homes","calculated_host_listings_count_private_rooms","calculated_host_listings_count_shared_rooms", "host_listings_count","host_total_listings_count","has_availability","instant_bookable","property_type", "host_has_profile_pic")
+
+clean_df <- df[,!names(df) %in% drop_cols_list]
+
+names(clean_df)
+```
+
+```{r}
+#Convert text columns to numerical columns where required
+
+#clean price column
+clean_df$price_num <- parse_number(clean_df$price)
+
+#clean bathrooms column
+clean_df$bathrooms_text <- tolower(clean_df$bathrooms_text)
+clean_df$bathrooms_text <- ifelse(grepl("half", clean_df$bathrooms_text, fixed = TRUE), "0.5",clean_df$bathrooms_text)
+# store final value in existing column since it is empty
+clean_df$bathrooms <- parse_number(clean_df$bathrooms_text)
+#replace NA with Median value of 1
+clean_df$bathrooms[is.na(clean_df$bathrooms)] <- 1
+```
+
+```{r}
+#create column for Distance from Downtown
+clean_df$dist_to_dt <- apply(clean_df[,c("longitude","latitude")],1,function(x) distm(
+  c(-82.55481168521978,35.59701329976918),
+  x,fun=distHaversine))*0.00062137
+
+#create columns to separate host verifications
+clean_df$host_verifications <- tolower(clean_df$host_verifications)
+
+#consider normal and work email as single
+email_sel <- paste(c("email", "work_email"), collapse="|")
+clean_df$email <- as.integer(str_detect(clean_df$host_verifications, email_sel))
+
+clean_df$phone <- as.integer(str_detect(clean_df$host_verifications, "phone"))
+```
+
+```{r}
+#create columns for the amenities
+
+#convert amenities to lower-case
+clean_df$amenities <- tolower(clean_df$amenities)
+
+#pets
+sel_pets <- paste(c("pets", "dogs", "cats", "animals"), collapse="|")
+clean_df$amn_pets<- as.integer(str_detect(clean_df$amenities, sel_pets))
+
+#bbq
+sel_bbq <- paste(c("bbq", "grill"), collapse="|")
+clean_df$amn_bbq <- as.integer(str_detect(clean_df$amenities, sel_bbq))
+
+#ac
+sel_ac <- paste(c(" ac ", "a.c", "aircon", "air-con", "hvac", "heating", "heater"), collapse="|")
+clean_df$amn_ac <- as.integer(str_detect(clean_df$amenities, sel_ac))
+
+
+#fridge
+sel_fridge <- paste(c("fridge", "refrigerator", "freezer"), collapse="|")
+clean_df$amn_fridge <- as.integer(str_detect(clean_df$amenities, sel_fridge))
+
+#oven
+sel_oven <- paste(c("oven", "microwave"), collapse="|")
+clean_df$amn_oven <- as.integer(str_detect(clean_df$amenities, sel_oven))
+
+#bathtub
+sel_btub <- paste(c("bathtub", "bath-tub"), collapse="|")
+clean_df$amn_btub <- as.integer(str_detect(clean_df$amenities, sel_btub))
+
+#pool
+sel_pool <- paste(c("swim", " pool "), collapse="|")
+clean_df$amn_pool <- as.integer(str_detect(clean_df$amenities, sel_pool))
+
+#wifi
+sel_wifi <- paste(c("wifi", "internet"), collapse="|")
+clean_df$amn_wifi <- as.integer(str_detect(clean_df$amenities, sel_wifi))
+
+#tv
+sel_tv <- paste(c("tv", "television", "hdtv"), collapse="|")
+clean_df$amn_tv <- as.integer(str_detect(clean_df$amenities, sel_tv))
+
+#coffee
+sel_coffee <- paste(c("coffee"), collapse="|")
+clean_df$amn_coffee <- as.integer(str_detect(clean_df$amenities, sel_coffee))
+
+#parking
+sel_park <- paste(c("vehicle", "parking"), collapse="|")
+clean_df$amn_park <- as.integer(str_detect(clean_df$amenities, sel_park))
+```
+
+```{r}
+# Clean the main columns one by one
+
+#make copy of DF
+clean_df_row <- clean_df
+
+#Clean host is superhost column
+clean_df_row$host_is_superhost <- replace_na(clean_df_row$host_is_superhost,FALSE)
+
+#convert neighborhood cleansed to factor
+clean_df_row$neighbourhood_cleansed <-as.factor(clean_df_row$neighbourhood_cleansed)
+
+#convert room_type to factor
+clean_df_row$room_type <-as.factor(clean_df_row$room_type)
+
+#clean number of Bedrooms, normally assume 1 for room and drop other values
+clean_df_row<- clean_df_row %>% mutate(bedrooms = case_when(is.na(bedrooms) & room_type!='Entire home/apt' ~ 1,
+                         TRUE ~ bedrooms))
+#drop the remainining rows 
+clean_df_row <- clean_df_row[!is.na(clean_df_row$bedrooms),]
+
+#clean beds, set -bedroom in case null
+clean_df_row <- clean_df_row %>% mutate(beds = case_when(is.na(beds)  ~ bedrooms,
+                         TRUE ~ beds))
+#clean host response time, create a new variable for NA
+clean_df_row$host_response_time <- replace(clean_df_row$host_response_time, clean_df_row$host_response_time=="N/A", "No Response")
+
+#clean host response rate, assume 0 response
+clean_df_row$host_response_rate <- replace(clean_df_row$host_response_rate, clean_df_row$host_response_rate=="N/A", "0%")
+clean_df_row$host_response_rate <- parse_number(clean_df_row$host_response_rate)
+
+#combine property type
+# clean_df_row$property_type <- tolower(clean_df_row$property_type)
+# clean_df_row <- clean_df_row %>% mutate(property_type = case_when(str_detect(property_type,"entire") ~ "entire",
+#                                                                   str_detect(property_type,"private") ~ "private",
+#                                                                   str_detect(property_type,"shared") ~ "shared",
+#                          TRUE ~ "other"))
+```
+
+The price (outcome variable) had the following distributions when split according to the room types:
+
+```{r, output=TRUE, out.width="50%", out.height="50%", fig.align="center"}
+ggplot(clean_df_row, aes(room_type ,price_num))+
+  geom_boxplot()+
+  xlab("Room Types")+
+  ylab("Listing Price in $")+
+  ggtitle("Distribution of Listing Prices vs Room Types")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+The Hotel room and Shared room had very few observations which resulted in the very narrow distribution except the few outliers. Combining or dropping these room types was considered as a solution but they were left as-is so that the model will be able to predict prices for these categories as well if required.
+
+A correlation matrix was plotted to study the relation between different ratings provided by the guests:
+
+```{r, output= TRUE, out.width="50%", out.height="50%"}
+# Multicollinearity
+cp <- cor(clean_df_row[,c(
+ "review_scores_rating",
+ "review_scores_accuracy",     
+"review_scores_cleanliness",
+"review_scores_checkin",
+"review_scores_communication",
+"review_scores_location",    
+"review_scores_value"        
+)
+                    ],use="pairwise.complete.obs")
+colnames(cp)<- c("Rating", "Accuracy", "Cleanliness", "Check-in", "Communication", "Location","Value")
+rownames(cp)<- c("Rating", "Accuracy", "Cleanliness", "Check-in", "Communication", "Location","Value")
+
+corrplot(cp, title = "Correlation Between Different Review Ratings", mar=c(0,0,1,0))
+```
+
+During the analysis it was found that many of the properties had their host phone-numbers verified and had amenities like wi-fi etc. , since these were available in almost all the properties, their significance would be lesser, so they were not considered for the modelling.
+
+Post model creation **VIF** function was used to check and verify if there was any multi-collinearity between the input variables for the model.
+
+```{r}
+table(clean_df_row$phone, useNA = 'always')
+```
+
+```{r}
+table(clean_df_row$amn_tv, useNA = 'always')
+```
+
+```{r}
+table(clean_df_row$amn_wifi, useNA = 'always')
+```
+
+```{r}
+table(clean_df_row$amn_oven, useNA = 'always')
+```
+
+```{r}
+table(clean_df_row$amn_coffee, useNA = 'always')
+```
+
+```{r}
+table(clean_df_row$amn_btub, useNA = 'always')
+```
+
+```{r}
+table(clean_df_row$amn_park, useNA = 'always')
+```
+
+The selected variables were then used for the modelling. For this project, Linear Regression was chosen for its robustness(to noise and outliers) and simplicity(easy and fast implementation and processing).
+
+One additional benefit of Linear Regression is its interpretability, by knowing the relative imporatance of the factors from the model, the hosts can also get an idea of what changes they can make so as to get a higher value for their listing.
+
+```{r}
+#Running the model, dropping the columns which are not required
+model_drop <- c("amenities", "neighbourhood_group_cleansed", "bathrooms_text","longitude", "latitude","price", "host_verifications", "host_response_time", "amn_wifi", "phone", "amn_pool", "amn_ac", "amn_bbq", "amn_oven", "amn_fridge", "amn_coffee")
+model_df <- clean_df_row[,!names(clean_df_row) %in% model_drop]
+model_v1 <- lm(price_num ~ .,data = model_df)
+summary(model_v1)
+```
+
+```{r}
+plot(model_v1)
+
+```
+
+```{r}
+vif(model_v1)
+```
+
+Once the model was generated the diagnostic plots were studied to validate the model, and the following 2 changes were made to correct the errors:
+
+1.  the outcome variable(price) was changed to log scale
+2.  one of the observations which was having high leverage was dropped
+
+The new model was verified again using the diagnostic plots and no violations of the assumptions for Linear Regression were present.
+
+**Note**: The predicted output price from the model will now be in log-scale and so has to be converted back to linear scale before using it
+
+```{r}
+#rerun model by converting to log and dropping row with high leverage
+model_df_2 <- model_df[-985,] 
+model_v2 <- lm(log(price_num) ~ .,data = model_df_2)
+summary(model_v2)
+```
+
+```{r, output=TRUE, out.width="50%", out.height="50%"}
+plot(model_v2)
+```
+
+```{r}
+#sample prediction
+df_test <- data.frame(
+
+host_response_rate = c(70, 70),
+host_is_superhost = c(TRUE, TRUE),
+host_identity_verified = c(TRUE, TRUE),
+neighbourhood_cleansed = c("28732", "28732"),
+room_type = c("Entire home/apt","Entire home/apt"),
+accommodates = c(4, 4),
+bathrooms = c(2,1),
+bedrooms =c(2,2),
+beds = c(2,2),
+minimum_nights = c(2,2),
+number_of_reviews  = c(50, 50),       
+review_scores_rating  =c(4.2, 4.2),       
+review_scores_accuracy  = c(3.7, 3.7),   
+review_scores_cleanliness  =c(4.1, 4.1),
+review_scores_checkin = c(4.1, 4.1),
+review_scores_communication =c(3.8,3.8),  
+review_scores_location =c(4.1,4.1),
+review_scores_value = c(4.4, 4.4),
+dist_to_dt = c(1.2,1.1),
+email =c(1,1),
+amn_pets =c(0,1),
+amn_btub=c(0,0),
+amn_tv=c(1,1),
+amn_park=c(1,1)
+)
+# convert output to normal scale since model outputs price in log scale
+exp(predict(model_v2, df_test ))
+
+```
+
+## 2.3 Conclusion
+
+The model developed has a R^2^ of 0.636 and F-Statistic of 156.4 which imply that the model is moderately effective in predicting the price as it is able to explain around 64% of the variation in price based on the input variables. The following changes or data will help in the analysis and improving the model:
+
+-   Hosts should have a pre-made list of amenities to choose from so that there is no variation and the impact of amenities can be used in a more effective way. e.g. in the current process of free-text entry "pool" can be confused between swimming pool or a pool table.
+
+-   The current data does not have information with respect to time, if this data was available additional analysis can be performed to improve the model, e.g. impact of weekends/holidays or gap between booking and check-in on the price.
+
+**Note**: Since the Dataset only contains data for Ashville, the model should only be used for the listings in Ashville.
